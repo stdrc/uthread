@@ -2,10 +2,11 @@
 
 #include "thread.h"
 
-void func(void *arg);
+void func1(void *arg);
 void func2(void *arg);
+void func3(void *arg);
 
-void func(void *arg) {
+void func1(void *arg) {
     int n = (int)arg;
     thread_create(func2, (void *)thread_gettid());
     for (int i = 0; i < n; i++) {
@@ -15,17 +16,22 @@ void func(void *arg) {
 }
 
 void func2(void *arg) {
-    if ((int)arg > 10) thread_exit();
     printf("func2 from thread %d!\n", (int)arg);
     thread_yield();
     printf("func2 from thread %d again!\n", (int)arg);
-    thread_create(func2, (void *)thread_gettid());
+    thread_create(func3, (void *)thread_gettid());
+}
+
+void func3(void *arg) {
+    printf("func3 from thread %d!\n", (int)arg);
+    thread_exit();
+    printf("never reach here\n");
 }
 
 int main() {
     thread_manager_init();
-    for (int i = 0; i < 30; i++) {
-        thread_create(func, (void *)(i + 1));
+    for (int i = 0; i < 32; i++) {
+        thread_create(func1, (void *)(i + 1));
     }
     thread_manager_start();
     return 0;
