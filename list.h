@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#define container_of(ptr, type, field) ((type *)((uintptr_t)(ptr) - (uintptr_t)(&(((type *)(0))->field))))
+#define container_of(ptr, type, field) ((type *)((uint64_t)(ptr) - (uint64_t)(&(((type *)(0))->field))))
 
 #define container_of_safe(ptr, type, field)             \
     ({                                                  \
@@ -35,7 +35,7 @@ static inline void list_add(struct list_node *head, struct list_node *node) {
 
 static inline void list_append(struct list_node *head, struct list_node *node) {
     struct list_node *tail = head->prev;
-    return list_add(tail, node);
+    list_add(tail, node);
 }
 
 static inline void list_del(struct list_node *node) {

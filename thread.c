@@ -70,6 +70,7 @@ void thread_manager_start() {
             free(mem_to_free);
             mem_to_free = NULL;
         }
+        longjmp(current_thread->context, 1);
         break;
     }
     }
