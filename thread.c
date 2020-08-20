@@ -8,27 +8,23 @@
 #include "list.h"
 #include "logging.h"
 
-#define STACK_ALIGNMENT (sizeof(void *) * 2)
-#define STACK_SIZE 512
+#define STACK_ALIGNMENT (16)
+#define STACK_SIZE (721)
 
 struct thread {
     int tid;
-    char name[MAX_THREAD_NAME];
+    char name[MAX_THREAD_NAME + 1];
     thread_func *func;
     void *arg;
-    jmp_buf context;
     void *stack_base;
     size_t stack_size;
     struct list_node ready_node;
+    jmp_buf context;
+    //    int _dummy[100];
 };
 
 static struct thread *current_thread = NULL;
 static struct list_node ready_list;
-
-#define MGR_START 0
-#define MGR_RESCHED 1
-#define MGR_EXIT_THREAD 2
-#define MGR_FREE_MEM 3
 
 static jmp_buf manager_context;
 static void *mem_to_free = NULL;
@@ -36,6 +32,10 @@ static void *mem_to_free = NULL;
 void thread_manager_init() {
     list_init(&ready_list);
 }
+
+#define MGR_START 0
+#define MGR_RESCHED 1
+#define MGR_FREE_MEM 2
 
 void thread_manager_start() {
     debug("Manager started\n");
@@ -56,14 +56,6 @@ void thread_manager_start() {
         }
         break;
     }
-    case MGR_EXIT_THREAD: {
-        debug("Manager exit thread\n");
-        free(current_thread->stack_base);
-        free(current_thread);
-        current_thread = NULL;
-        longjmp(manager_context, MGR_RESCHED);
-        break;
-    }
     case MGR_FREE_MEM: {
         debug("Manager free mem\n");
         if (mem_to_free) {
@@ -73,59 +65,71 @@ void thread_manager_start() {
         longjmp(current_thread->context, 1);
         break;
     }
+    default:
+        longjmp(current_thread->context, 1);
     }
     debug("Manager finished\n");
 }
 
 static inline void thread_manager_call(int svc) {
-    if (!current_thread) fatal(1, "no thread is running\n");
-    if (!setjmp(current_thread->context)) {
+    if (!current_thread || !setjmp(current_thread->context)) {
         longjmp(manager_context, svc);
     }
 }
 
 static int next_tid = 1;
 
+static void thread_entry() {
+    assert(current_thread != NULL);
+    debug("Thread %d scheduled first time\n", current_thread->tid);
+    current_thread->func(current_thread->arg);
+    thread_exit();
+}
+
 void thread_create(const char *name, thread_func *func, void *arg) {
     // create tcb
-    struct thread *thread = (struct thread *)malloc(sizeof(struct thread));
+    void *stack_base;
+    if (posix_memalign(&stack_base, STACK_ALIGNMENT, STACK_SIZE + sizeof(struct thread))) {
+        fatal(1, "failed to allocate memory");
+    }
+    struct thread *thread = (struct thread *)((void *)stack_base + STACK_SIZE);
     thread->tid = __sync_fetch_and_add(&next_tid, 1);
     strncpy(thread->name, name, MAX_THREAD_NAME);
+    thread->name[MAX_THREAD_NAME] = '\0'; // in case the name is too long
     thread->func = func;
     thread->arg = arg;
+    thread->stack_base = stack_base;
+    thread->stack_size = STACK_SIZE;
     list_init(&thread->ready_node);
     list_append(&ready_list, &thread->ready_node);
+    debug("Thread %d, stack base: %p, stack size: %zu\n", thread->tid, thread->stack_base, thread->stack_size);
 
     if (setjmp(thread->context)) {
-        // new thread scheduled first time
-        assert(current_thread != NULL);
-        debug("Thread %d scheduled first time\n", current_thread->tid);
-        current_thread->func(current_thread->arg);
-        thread_exit();
+        fatal(1, "shouldn't reach here");
     }
-
-    // prepare stack
-    thread->stack_size = STACK_SIZE;
-    posix_memalign(&thread->stack_base, STACK_ALIGNMENT, thread->stack_size);
-    debug("Thread %d, stack base: %p, stack size: %lu\n", thread->tid, thread->stack_base, thread->stack_size);
-
-    // modify jmp_buf
+    // set stack and pc
     struct jmp_buf_vals buf_vals = jmp_buf_parse(thread->context);
     buf_vals.sp = buf_vals.bp = (uint64_t)(thread->stack_base + thread->stack_size);
+    buf_vals.pc = (uint64_t)thread_entry;
     jmp_buf_overwrite(thread->context, buf_vals);
 
     debug("Thread %d created\n", thread->tid);
 }
 
 void thread_yield() {
+    assert(current_thread != NULL);
     thread_manager_call(MGR_RESCHED);
 }
 
 void thread_exit() {
-    thread_manager_call(MGR_EXIT_THREAD);
+    assert(current_thread != NULL);
+    thread_free(current_thread->stack_base);
+    current_thread = NULL;
+    thread_manager_call(MGR_RESCHED);
 }
 
 void thread_free(void *ptr) {
+    assert(current_thread != NULL);
     mem_to_free = ptr;
     thread_manager_call(MGR_FREE_MEM);
 }
