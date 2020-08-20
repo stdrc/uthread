@@ -5,4 +5,10 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_definitions(DEBUG)
 endif()
 
-add_executable(main main.c thread.c)
+include_directories(include)
+include_directories(src)
+
+add_library(uthread src/uthread.c)
+
+add_executable(main main.c)
+target_link_libraries(main uthread)

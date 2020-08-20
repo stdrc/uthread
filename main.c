@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#include "thread.h"
+#include "uthread.h"
 
 void func1(void *arg);
 void func2(void *arg);

@@ -1,11 +1,11 @@
-#include "thread.h"
+#include "uthread.h"
 
 #include <assert.h>
 #include <stdio.h>
 
 #include "context.h"
-#include "list.h"
-#include "logging.h"
+#include "utils/list.h"
+#include "utils/logging.h"
 
 #define STACK_ALIGNMENT (0x10)
 #define STACK_ALLOC_SIZE (0x1000)
