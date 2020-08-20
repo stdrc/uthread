@@ -8,8 +8,8 @@
 #include "list.h"
 #include "logging.h"
 
-#define STACK_ALIGNMENT (16)
-#define STACK_SIZE (721)
+#define STACK_ALIGNMENT (0x1000)
+#define STACK_ALLOC_SIZE (0x1000)
 
 struct thread {
     int tid;
@@ -20,7 +20,6 @@ struct thread {
     size_t stack_size;
     struct list_node ready_node;
     jmp_buf context;
-    //    int _dummy[100];
 };
 
 static struct thread *current_thread = NULL;
@@ -77,8 +76,6 @@ static inline void thread_manager_call(int svc) {
     }
 }
 
-static int next_tid = 1;
-
 static void thread_entry() {
     assert(current_thread != NULL);
     debug("Thread %d scheduled first time\n", current_thread->tid);
@@ -86,30 +83,31 @@ static void thread_entry() {
     thread_exit();
 }
 
+static int next_tid = 1;
+
 void thread_create(const char *name, thread_func *func, void *arg) {
     // create tcb
     void *stack_base;
-    if (posix_memalign(&stack_base, STACK_ALIGNMENT, STACK_SIZE + sizeof(struct thread))) {
+    if (posix_memalign(&stack_base, STACK_ALIGNMENT, STACK_ALLOC_SIZE)) {
         fatal(1, "failed to allocate memory");
     }
-    struct thread *thread = (struct thread *)((void *)stack_base + STACK_SIZE);
+    void *stack_top = (void *)stack_base + STACK_ALLOC_SIZE - sizeof(struct thread);
+    struct thread *thread = (struct thread *)stack_top;
     thread->tid = __sync_fetch_and_add(&next_tid, 1);
     strncpy(thread->name, name, MAX_THREAD_NAME);
     thread->name[MAX_THREAD_NAME] = '\0'; // in case the name is too long
     thread->func = func;
     thread->arg = arg;
     thread->stack_base = stack_base;
-    thread->stack_size = STACK_SIZE;
+    thread->stack_size = stack_top - stack_base;
     list_init(&thread->ready_node);
     list_append(&ready_list, &thread->ready_node);
     debug("Thread %d, stack base: %p, stack size: %zu\n", thread->tid, thread->stack_base, thread->stack_size);
 
-    if (setjmp(thread->context)) {
-        fatal(1, "shouldn't reach here");
-    }
+    if (setjmp(thread->context)) fatal(1, "shouldn't reach here");
     // set stack and pc
     struct jmp_buf_vals buf_vals = jmp_buf_parse(thread->context);
-    buf_vals.sp = buf_vals.bp = (uint64_t)(thread->stack_base + thread->stack_size);
+    buf_vals.sp = buf_vals.bp = (uint64_t)(thread->stack_base + thread->stack_size - 16 - 8 /* for safety */);
     buf_vals.pc = (uint64_t)thread_entry;
     jmp_buf_overwrite(thread->context, buf_vals);
 
