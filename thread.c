@@ -4,23 +4,12 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "jmp_buf.h"
 #include "list.h"
-#include "tools.h"
-
-#ifdef DEBUG
-#define debug(fmt, ...) printf(fmt, ##__VA_ARGS__)
-#else
-#define debug(fmt, ...)
-#endif
-
-#define error(fmt, ...)             \
-    do {                            \
-        printf(fmt, ##__VA_ARGS__); \
-        exit(1);                    \
-    } while (0)
+#include "logging.h"
 
 #define STACK_ALIGNMENT (sizeof(void *) * 2)
-#define STACK_SIZE 1024
+#define STACK_SIZE 512
 
 struct thread {
     int tid;
@@ -69,11 +58,9 @@ void thread_manager_start() {
     }
     case MGR_EXIT_THREAD: {
         debug("Manager exit thread\n");
-        if (current_thread) {
-            free(current_thread->stack_base);
-            free(current_thread);
-            current_thread = NULL;
-        }
+        free(current_thread->stack_base);
+        free(current_thread);
+        current_thread = NULL;
         longjmp(manager_context, MGR_RESCHED);
         break;
     }
@@ -86,14 +73,14 @@ void thread_manager_start() {
         break;
     }
     }
+    debug("Manager finished\n");
 }
 
-static void thread_fire() {
-    // new thread scheduled first time
-    assert(current_thread != NULL);
-    debug("Thread %d scheduled first time\n", current_thread->tid);
-    current_thread->func(current_thread->arg);
-    thread_exit();
+static inline void thread_manager_call(int svc) {
+    if (!current_thread) fatal(1, "no thread is running\n");
+    if (!setjmp(current_thread->context)) {
+        longjmp(manager_context, svc);
+    }
 }
 
 static int next_tid = 1;
@@ -109,8 +96,11 @@ void thread_create(const char *name, thread_func *func, void *arg) {
     list_append(&ready_list, &thread->ready_node);
 
     if (setjmp(thread->context)) {
-        thread_fire();
-        // won't come back here
+        // new thread scheduled first time
+        assert(current_thread != NULL);
+        debug("Thread %d scheduled first time\n", current_thread->tid);
+        current_thread->func(current_thread->arg);
+        thread_exit();
     }
 
     // prepare stack
@@ -127,24 +117,16 @@ void thread_create(const char *name, thread_func *func, void *arg) {
 }
 
 void thread_yield() {
-    if (!setjmp(current_thread->context)) {
-        longjmp(manager_context, MGR_RESCHED);
-    }
+    thread_manager_call(MGR_RESCHED);
 }
 
 void thread_exit() {
-    // no need to save context, since we are exiting
-    longjmp(manager_context, MGR_EXIT_THREAD);
+    thread_manager_call(MGR_EXIT_THREAD);
 }
 
 void thread_free(void *ptr) {
-    if (!current_thread) {
-        return;
-    }
     mem_to_free = ptr;
-    if (!setjmp(current_thread->context)) {
-        longjmp(manager_context, MGR_FREE_MEM);
-    }
+    thread_manager_call(MGR_FREE_MEM);
 }
 
 int thread_gettid() {
