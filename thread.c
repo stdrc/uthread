@@ -13,7 +13,6 @@
 
 struct thread {
     int tid;
-    char name[MAX_THREAD_NAME + 1];
     thread_func *func;
     void *arg;
     void *stack_base;
@@ -85,7 +84,7 @@ static void thread_entry() {
 
 static int next_tid = 1;
 
-void thread_create(const char *name, thread_func *func, void *arg) {
+int thread_create(thread_func *func, void *arg) {
     // create tcb
     void *stack_base;
     if (posix_memalign(&stack_base, STACK_ALIGNMENT, STACK_ALLOC_SIZE)) {
@@ -94,8 +93,6 @@ void thread_create(const char *name, thread_func *func, void *arg) {
     void *stack_top = (void *)stack_base + STACK_ALLOC_SIZE - sizeof(struct thread);
     struct thread *thread = (struct thread *)stack_top;
     thread->tid = __sync_fetch_and_add(&next_tid, 1);
-    strncpy(thread->name, name, MAX_THREAD_NAME);
-    thread->name[MAX_THREAD_NAME] = '\0'; // in case the name is too long
     thread->func = func;
     thread->arg = arg;
     thread->stack_base = stack_base;
@@ -112,6 +109,7 @@ void thread_create(const char *name, thread_func *func, void *arg) {
     jmp_buf_overwrite(thread->context, buf_vals);
 
     debug("Thread %d created\n", thread->tid);
+    return thread->tid;
 }
 
 void thread_yield() {

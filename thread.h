@@ -4,13 +4,11 @@
 
 #include "list.h"
 
-#define MAX_THREAD_NAME 80
-
 void thread_manager_init();
 void thread_manager_start();
 
 typedef void thread_func(void *arg);
-void thread_create(const char *name, thread_func *func, void *arg);
+int thread_create(thread_func *func, void *arg);
 void thread_yield();
 void thread_exit();
 void thread_free(void *ptr);
