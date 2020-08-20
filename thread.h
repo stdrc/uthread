@@ -6,11 +6,10 @@
 
 #define MAX_THREAD_NAME 80
 
-typedef void thread_func(void *arg);
-
 void thread_scheduler_init();
 void thread_scheduler_run();
 
+typedef void thread_func(void *arg);
 void thread_create(const char *name, thread_func *func, void *arg);
 void thread_yield();
 void thread_exit();

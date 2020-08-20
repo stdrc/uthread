@@ -31,8 +31,6 @@ static struct thread *current_thread = NULL;
 static jmp_buf scheduler_context;
 static struct list_node ready_list;
 
-#pragma region Handle jmp_buf
-
 struct jmp_buf_vals {
     uint64_t bp;
     uint64_t sp;
@@ -57,10 +55,6 @@ static inline void jmp_buf_overwrite(jmp_buf buf, struct jmp_buf_vals vals) {
     asm volatile("xorq %%gs:0x38, %0\n\t" : "=g"(p[7]) : "0"(vals.pc));
 }
 
-#pragma endregion
-
-#pragma region Scheduler
-
 void thread_scheduler_init() {
     list_init(&ready_list);
 }
@@ -79,8 +73,6 @@ void thread_scheduler_run() {
         longjmp(current_thread->context, 1);
     }
 }
-
-#pragma endregion
 
 static void thread_fire() {
     // new thread scheduled first time
