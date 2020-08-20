@@ -1,6 +1,6 @@
-# User-Level Thread
+# uthread
 
-Here is a very simple user-level thread (or _coroutine_) implementation.
+**uthread** is a very simple user-level thread (or _coroutine_) implementation based on `setjmp` and `longjmp`.
 
 ## References
 

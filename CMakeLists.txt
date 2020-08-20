@@ -10,5 +10,5 @@ include_directories(src)
 
 add_library(uthread src/uthread.c)
 
-add_executable(main main.c)
-target_link_libraries(main uthread)
+add_executable(uthread_demo demo.c)
+target_link_libraries(uthread_demo uthread)

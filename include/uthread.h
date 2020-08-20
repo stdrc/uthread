@@ -1,13 +1,11 @@
 #pragma once
 
-void thread_manager_init();
-void thread_manager_start();
+void uthread_manager_init();
+void uthread_manager_start();
 
-typedef void thread_func(void *arg);
-int thread_create(thread_func *func, void *arg);
-void thread_yield();
-void thread_exit();
-void thread_free(void *ptr);
-int thread_gettid();
-
-void __thread_debug_print_ready_list();
+typedef void uthread_func_t(void *arg);
+int uthread_create(uthread_func_t *func, void *arg);
+void uthread_yield();
+void uthread_exit();
+void uthread_free(void *ptr);
+int uthread_get_tid();

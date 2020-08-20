@@ -10,9 +10,9 @@
 #define STACK_ALIGNMENT (0x10)
 #define STACK_ALLOC_SIZE (0x1000)
 
-struct thread {
+struct uthread {
     int tid;
-    thread_func *func;
+    uthread_func_t *func;
     void *arg;
     void *stack_base;
     size_t stack_size;
@@ -20,13 +20,13 @@ struct thread {
     struct context context;
 };
 
-static struct thread *current_thread = NULL;
+static struct uthread *current_thread = NULL;
 static struct list_node ready_list;
 
 static struct context manager_context;
 static void *mem_to_free = NULL;
 
-void thread_manager_init() {
+void uthread_manager_init() {
     list_init(&ready_list);
 }
 
@@ -34,7 +34,7 @@ void thread_manager_init() {
 #define MGR_SVC_RESCHED 1
 #define MGR_SVC_FREE_MEM 2
 
-void thread_manager_start() {
+void uthread_manager_start() {
     debug("Manager started\n");
     int svc = save_context(manager_context);
     debug("Manager service #%d\n", svc);
@@ -46,7 +46,7 @@ void thread_manager_start() {
             list_append(&ready_list, &current_thread->ready_node);
         }
         if (!list_empty(&ready_list)) {
-            current_thread = container_of(ready_list.next, struct thread, ready_node);
+            current_thread = container_of(ready_list.next, struct uthread, ready_node);
             list_del(&current_thread->ready_node);
             debug("Thread %d selected\n", current_thread->tid);
             restore_context(current_thread->context, 1);
@@ -68,29 +68,29 @@ void thread_manager_start() {
     debug("Manager finished\n");
 }
 
-static inline void thread_manager_call(int svc) {
+static inline void uthread_manager_call(int svc) {
     if (!current_thread || !save_context(current_thread->context)) {
         restore_context(manager_context, svc);
     }
 }
 
-static void thread_entry() {
+static void uthread_entry() {
     assert(current_thread != NULL);
     debug("Thread %d scheduled first time\n", current_thread->tid);
     current_thread->func(current_thread->arg);
-    thread_exit();
+    uthread_exit();
 }
 
 static int next_tid = 1;
 
-int thread_create(thread_func *func, void *arg) {
+int uthread_create(uthread_func_t *func, void *arg) {
     // create tcb
     void *stack_base;
     if (posix_memalign(&stack_base, STACK_ALIGNMENT, STACK_ALLOC_SIZE)) {
         fatal(1, "failed to allocate memory");
     }
-    void *stack_top = (void *)stack_base + STACK_ALLOC_SIZE - sizeof(struct thread);
-    struct thread *thread = (struct thread *)stack_top;
+    void *stack_top = (void *)stack_base + STACK_ALLOC_SIZE - sizeof(struct uthread);
+    struct uthread *thread = (struct uthread *)stack_top;
     thread->tid = __sync_fetch_and_add(&next_tid, 1);
     thread->func = func;
     thread->arg = arg;
@@ -105,37 +105,30 @@ int thread_create(thread_func *func, void *arg) {
     stack_top -= 0x10 - 0x8; // spare some space for safety
     context_set_bp(thread->context, (uint64_t)stack_top);
     context_set_sp(thread->context, (uint64_t)stack_top);
-    context_set_pc(thread->context, (uint64_t)thread_entry);
+    context_set_pc(thread->context, (uint64_t)uthread_entry);
 
     debug("Thread %d created\n", thread->tid);
     return thread->tid;
 }
 
-void thread_yield() {
+void uthread_yield() {
     assert(current_thread != NULL);
-    thread_manager_call(MGR_SVC_RESCHED);
+    uthread_manager_call(MGR_SVC_RESCHED);
 }
 
-void thread_exit() {
+void uthread_exit() {
     assert(current_thread != NULL);
-    thread_free(current_thread->stack_base);
+    uthread_free(current_thread->stack_base);
     current_thread = NULL;
-    thread_manager_call(MGR_SVC_RESCHED);
+    uthread_manager_call(MGR_SVC_RESCHED);
 }
 
-void thread_free(void *ptr) {
+void uthread_free(void *ptr) {
     assert(current_thread != NULL);
     mem_to_free = ptr;
-    thread_manager_call(MGR_SVC_FREE_MEM);
+    uthread_manager_call(MGR_SVC_FREE_MEM);
 }
 
-int thread_gettid() {
+int uthread_get_tid() {
     return current_thread ? current_thread->tid : 0;
-}
-
-void __thread_debug_print_ready_list() {
-    struct thread *thread;
-    for_each_in_list(thread, struct thread, ready_node, &ready_list) {
-        printf("Thread %d, func = %p, arg = %p\n", thread->tid, thread->func, thread->arg);
-    }
 }
