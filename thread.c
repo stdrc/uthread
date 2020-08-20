@@ -5,12 +5,19 @@
 #include <string.h>
 
 #include "list.h"
+#include "tools.h"
 
 #ifdef DEBUG
 #define debug(fmt, ...) printf(fmt, ##__VA_ARGS__)
 #else
 #define debug(fmt, ...)
 #endif
+
+#define error(fmt, ...)             \
+    do {                            \
+        printf(fmt, ##__VA_ARGS__); \
+        exit(1);                    \
+    } while (0)
 
 #define STACK_ALIGNMENT (sizeof(void *) * 2)
 #define STACK_SIZE 1024
@@ -26,51 +33,58 @@ struct thread {
     struct list_node ready_node;
 };
 
-static int next_tid = 1;
 static struct thread *current_thread = NULL;
-static jmp_buf scheduler_context;
 static struct list_node ready_list;
 
-struct jmp_buf_vals {
-    uint64_t bp;
-    uint64_t sp;
-    uint64_t pc;
-};
+#define MGR_START 0
+#define MGR_RESCHED 1
+#define MGR_EXIT_THREAD 2
+#define MGR_FREE_MEM 3
 
-static inline struct jmp_buf_vals jmp_buf_parse(jmp_buf buf) {
-    // platform dependent
-    uint64_t *p = (uint64_t *)buf;
-    struct jmp_buf_vals ret;
-    asm volatile("xorq %%gs:0x38, %0\n\t" : "=g"(ret.bp) : "0"(p[1]));
-    asm volatile("xorq %%gs:0x38, %0\n\t" : "=g"(ret.sp) : "0"(p[2]));
-    asm volatile("xorq %%gs:0x38, %0\n\t" : "=g"(ret.pc) : "0"(p[7]));
-    return ret;
-}
+static jmp_buf manager_context;
+static void *mem_to_free = NULL;
 
-static inline void jmp_buf_overwrite(jmp_buf buf, struct jmp_buf_vals vals) {
-    // platform dependent
-    uint64_t *p = (uint64_t *)buf;
-    asm volatile("xorq %%gs:0x38, %0\n\t" : "=g"(p[1]) : "0"(vals.bp));
-    asm volatile("xorq %%gs:0x38, %0\n\t" : "=g"(p[2]) : "0"(vals.sp));
-    asm volatile("xorq %%gs:0x38, %0\n\t" : "=g"(p[7]) : "0"(vals.pc));
-}
-
-void thread_scheduler_init() {
+void thread_manager_init() {
     list_init(&ready_list);
 }
 
-void thread_scheduler_run() {
-    debug("Scheduler started\n");
-    setjmp(scheduler_context);
-    debug("Scheduler reschedule\n");
-    if (current_thread) {
-        list_append(&ready_list, &current_thread->ready_node);
+void thread_manager_start() {
+    debug("Manager started\n");
+    int svc = setjmp(manager_context);
+    debug("Manager service #%d\n", svc);
+    switch (svc) {
+    case MGR_START:
+    case MGR_RESCHED: {
+        debug("Manager reschedule\n");
+        if (current_thread) {
+            list_append(&ready_list, &current_thread->ready_node);
+        }
+        if (!list_empty(&ready_list)) {
+            current_thread = container_of(ready_list.next, struct thread, ready_node);
+            list_del(&current_thread->ready_node);
+            debug("Thread %d selected\n", current_thread->tid);
+            longjmp(current_thread->context, 1);
+        }
+        break;
     }
-    if (!list_empty(&ready_list)) {
-        current_thread = container_of(ready_list.next, struct thread, ready_node);
-        list_del(&current_thread->ready_node);
-        debug("Thread %d selected\n", current_thread->tid);
-        longjmp(current_thread->context, 1);
+    case MGR_EXIT_THREAD: {
+        debug("Manager exit thread\n");
+        if (current_thread) {
+            free(current_thread->stack_base);
+            free(current_thread);
+            current_thread = NULL;
+        }
+        longjmp(manager_context, MGR_RESCHED);
+        break;
+    }
+    case MGR_FREE_MEM: {
+        debug("Manager free mem\n");
+        if (mem_to_free) {
+            free(mem_to_free);
+            mem_to_free = NULL;
+        }
+        break;
+    }
     }
 }
 
@@ -81,6 +95,8 @@ static void thread_fire() {
     current_thread->func(current_thread->arg);
     thread_exit();
 }
+
+static int next_tid = 1;
 
 void thread_create(const char *name, thread_func *func, void *arg) {
     // create tcb
@@ -112,17 +128,23 @@ void thread_create(const char *name, thread_func *func, void *arg) {
 
 void thread_yield() {
     if (!setjmp(current_thread->context)) {
-        longjmp(scheduler_context, 1);
+        longjmp(manager_context, MGR_RESCHED);
     }
 }
 
 void thread_exit() {
-    if (current_thread) {
-        free(current_thread->stack_base);
-        free(current_thread);
-        current_thread = NULL;
+    // no need to save context, since we are exiting
+    longjmp(manager_context, MGR_EXIT_THREAD);
+}
+
+void thread_free(void *ptr) {
+    if (!current_thread) {
+        return;
     }
-    longjmp(scheduler_context, 1);
+    mem_to_free = ptr;
+    if (!setjmp(current_thread->context)) {
+        longjmp(manager_context, MGR_FREE_MEM);
+    }
 }
 
 int thread_gettid() {
