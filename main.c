@@ -2,26 +2,31 @@
 
 #include "thread.h"
 
+void func(void *arg);
+void func2(void *arg);
+
 void func(void *arg) {
-    printf("Hello, I'm thread %d, my arg is %d\n", thread_gettid(), (int)arg);
-    thread_yield();
-    printf("Hello, I'm thread %d, my arg is %d\n", thread_gettid(), (int)arg);
+    int n = (int)arg;
+    thread_create(func2, (void *)thread_gettid());
+    for (int i = 0; i < n; i++) {
+        printf("Hello, I'm thread %d, my arg is %d\n", thread_gettid(), n);
+        thread_yield();
+    }
 }
 
 void func2(void *arg) {
-    printf("Hello, I'm thread %d, my arg is %d\n", thread_gettid(), (int)arg);
-    // thread_create("Task 3", task0, (void *)3);
-    // thread_yield();
-    // thread_yield();
-    // thread_yield();
+    if ((int)arg > 10) thread_exit();
+    printf("func2 from thread %d!\n", (int)arg);
     thread_yield();
-    printf("Hello, I'm thread %d, my arg is %d\n", thread_gettid(), (int)arg);
+    printf("func2 from thread %d again!\n", (int)arg);
+    thread_create(func2, (void *)thread_gettid());
 }
 
 int main() {
     thread_manager_init();
-    thread_create("Task 1", func, (void *)1);
-    thread_create("Task 2", func, (void *)2);
+    for (int i = 0; i < 30; i++) {
+        thread_create(func, (void *)(i + 1));
+    }
     thread_manager_start();
     return 0;
 }
