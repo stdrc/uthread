@@ -1,9 +1,5 @@
 #pragma once
 
-#include <setjmp.h>
-
-#include "list.h"
-
 void thread_manager_init();
 void thread_manager_start();
 

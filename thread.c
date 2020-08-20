@@ -1,6 +1,7 @@
 #include "thread.h"
 
 #include <assert.h>
+#include <setjmp.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -8,7 +9,7 @@
 #include "list.h"
 #include "logging.h"
 
-#define STACK_ALIGNMENT (0x1000)
+#define STACK_ALIGNMENT (0x10)
 #define STACK_ALLOC_SIZE (0x1000)
 
 struct thread {
@@ -103,10 +104,10 @@ int thread_create(thread_func *func, void *arg) {
 
     if (setjmp(thread->context)) fatal(1, "shouldn't reach here");
     // set stack and pc
-    struct jmp_buf_vals buf_vals = jmp_buf_parse(thread->context);
-    buf_vals.sp = buf_vals.bp = (uint64_t)(thread->stack_base + thread->stack_size - 16 - 8 /* for safety */);
-    buf_vals.pc = (uint64_t)thread_entry;
-    jmp_buf_overwrite(thread->context, buf_vals);
+    stack_top -= 0x10 - 0x8; // spare some space for safety
+    jmp_buf_set_bp(thread->context, (uint64_t)stack_top);
+    jmp_buf_set_sp(thread->context, (uint64_t)stack_top);
+    jmp_buf_set_pc(thread->context, (uint64_t)thread_entry);
 
     debug("Thread %d created\n", thread->tid);
     return thread->tid;
