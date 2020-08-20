@@ -102,7 +102,7 @@ int uthread_create(uthread_func_t *func, void *arg) {
 
     if (save_context(thread->context)) fatal(1, "shouldn't reach here");
     // set stack and pc
-    stack_top -= 0x10 - 0x8; // spare some space for safety
+    stack_top = stack_top - 0x10 - 0x8; // spare some space for safety
     context_set_bp(thread->context, (uint64_t)stack_top);
     context_set_sp(thread->context, (uint64_t)stack_top);
     context_set_pc(thread->context, (uint64_t)uthread_entry);
