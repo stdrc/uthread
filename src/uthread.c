@@ -17,13 +17,13 @@ struct uthread {
     void *stack_base;
     size_t stack_size;
     struct list_node ready_node;
-    struct context context;
+    context_t context;
 };
 
 static struct uthread *current_thread = NULL;
 static struct list_node ready_list;
 
-static struct context manager_context;
+static context_t manager_context;
 static void *mem_to_free = NULL;
 
 void uthread_manager_init() {

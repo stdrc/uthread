@@ -3,22 +3,21 @@
 #include <setjmp.h>
 #include <stdint.h>
 
-struct context {
+typedef struct {
     jmp_buf _env;
-};
+} context_t[1];
 
-#define save_context(ctx) setjmp((ctx)._env)
-#define restore_context(ctx, ret_val) longjmp((ctx)._env, (ret_val))
+#define save_context(ctx) setjmp((ctx)[0]._env)
+#define restore_context(ctx, ret_val) longjmp((ctx)[0]._env, (ret_val))
 
-#define context_set_bp(ctx, bp)                                                             \
-    do {                                                                                    \
-        asm volatile("xorq %%gs:0x38, %0\n\t" : "=g"(((uint64_t *)ctx._env)[1]) : "0"(bp)); \
-    } while (0)
-#define context_set_sp(ctx, sp)                                                             \
-    do {                                                                                    \
-        asm volatile("xorq %%gs:0x38, %0\n\t" : "=g"(((uint64_t *)ctx._env)[2]) : "0"(sp)); \
-    } while (0)
-#define context_set_pc(ctx, pc)                                                             \
-    do {                                                                                    \
-        asm volatile("xorq %%gs:0x38, %0\n\t" : "=g"(((uint64_t *)ctx._env)[7]) : "0"(pc)); \
-    } while (0)
+static inline void context_set_bp(context_t ctx, uint64_t bp) {
+    asm volatile("xorq %%gs:0x38, %0\n\t" : "=g"(((uint64_t *)(ctx)[0]._env)[1]) : "0"(bp));
+}
+
+static inline void context_set_sp(context_t ctx, uint64_t sp) {
+    asm volatile("xorq %%gs:0x38, %0\n\t" : "=g"(((uint64_t *)(ctx)[0]._env)[2]) : "0"(sp));
+}
+
+static inline void context_set_pc(context_t ctx, uint64_t pc) {
+    asm volatile("xorq %%gs:0x38, %0\n\t" : "=g"(((uint64_t *)(ctx)[0]._env)[7]) : "0"(pc));
+}
