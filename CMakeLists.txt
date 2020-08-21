@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(user-level-thread)
+project(uthread)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_definitions(DEBUG)
